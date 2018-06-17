@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"github.com/xanzy/go-gitlab"
-	authentication "k8s.io/client-go/pkg/apis/authentication/v1beta1"
+	authentication "k8s.io/api/authentication/v1beta1"
 )
 
 func main() {
