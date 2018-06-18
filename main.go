@@ -48,7 +48,9 @@ func main() {
 		}
 
 		// Get user's group
-		groups, _, err := client.Groups.ListGroups(nil)
+    lgo := gitlab.ListGroupsOptions{}
+    lgo.ListOptions.PerPage=10000
+		groups, _, err := client.Groups.ListGroups(&lgo)
 		if err != nil {
 			log.Println("[Error]", err.Error())
 			w.WriteHeader(http.StatusUnauthorized)
