@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	log.Println("Gitlab Authn Webhook:", os.Getenv("GITLAB_API_ENDPOINT"))
+	log.Println("GitLab Authn Webhook:", os.Getenv("GITLAB_API_ENDPOINT"))
 	http.HandleFunc("/authenticate", func(w http.ResponseWriter, r *http.Request) {
 		decoder := json.NewDecoder(r.Body)
 		var tr authentication.TokenReview
@@ -29,8 +29,10 @@ func main() {
 			return
 		}
 
-		client := gitlab.NewClient(nil, tr.Spec.Token)
-		client.SetBaseURL(os.Getenv("GITLAB_API_ENDPOINT"))
+		client, err := gitlab.NewClient(tr.Spec.Token, gitlab.WithBaseURL(os.Getenv("GITLAB_API_ENDPOINT")))
+		if err != nil {
+			log.Fatal(err)
+		}
 
 		// Get user
 		user, _, err := client.Users.CurrentUser()
@@ -48,26 +50,44 @@ func main() {
 		}
 
 		// Get user's group
-    lgo := gitlab.ListGroupsOptions{}
-    lgo.ListOptions.PerPage=10000
-		groups, _, err := client.Groups.ListGroups(&lgo)
-		if err != nil {
-			log.Println("[Error]", err.Error())
-			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"apiVersion": "authentication.k8s.io/v1beta1",
-				"kind":       "TokenReview",
-				"status": authentication.TokenReviewStatus{
-					Authenticated: false,
-				},
-			})
-			return
-		}
+    	lgo := gitlab.ListGroupsOptions{}
+    	lgo.ListOptions.PerPage=100
+		lgo.AllAvailable=gitlab.Bool(false)
+		var all_group_path []string
+		var count int = 0
 
-		all_group_path := make([]string, len(groups))
-    for i, g := range groups {
-        all_group_path[i] = g.Path
-    }
+		for {
+			groups, resp, err := client.Groups.ListGroups(&lgo)
+			if err != nil {
+				log.Println("[Error]", err.Error())
+				w.WriteHeader(http.StatusUnauthorized)
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"apiVersion": "authentication.k8s.io/v1beta1",
+					"kind":       "TokenReview",
+					"status": authentication.TokenReviewStatus{
+						Authenticated: false,
+					},
+				})
+				return
+			}
+
+			if len(all_group_path) == 0 {
+				all_group_path = make([]string, resp.TotalItems)
+			}
+
+			for _, g := range groups {
+				all_group_path[count] = g.FullPath
+				count++
+			}
+	
+			// Exit the loop when we've seen all pages.
+			if resp.NextPage == 0 {
+				break
+			}
+	
+			// Update the page number to get the next page.
+			lgo.Page = resp.NextPage
+		}
 
 		// Set the TokenReviewStatus
 		log.Printf("[Success] login as %s, groups: %v", user.Username, all_group_path)
